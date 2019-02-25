@@ -1,25 +1,35 @@
 from bs4 import BeautifulSoup as bs #parse html into messages
 from datetime import datetime as dt #organizing messages by date
 from spellchecker import SpellChecker
-from nltk.corpus import stopwords
-import re, os, string
+from collections import Counter
+from matplotlib import pyplot as plt
+from nltk.corpus import stopwords as sw
+import re, os, string, contractions
+import pandas as pd
+import wordcloud
 
 allMessages = bs(open(os.getcwd() + "/message.html"), "html.parser").find("div",{"class": "_4t5n"}) #extract message section of html
+
+stopwords = [word.strip(' ') for word in pd.read_csv('stop-word-list.csv', delimiter=',')] #create the stopwords list from the csv file
+stopwords.extend([word for word in sw.words('english') if word not in stopwords])#then extend by stop words from nltk
 
 infoDict = {}
 spell = SpellChecker() #load frequency word list
 
-counter = 0
-for message in allMessages.children:
+for message in allMessages.children: #run through all the messages
     messageInfo = []
     messageParser(message)
     
     try:
         user, currMessage, monthYear = messageInfo #grab which person sent the message
     except:
-        #otherwise we hit the weird hyperlink error
-        messageInfo = [item for item in messageInfo if 'http' not in item if item is not '']
-        messageInfo.insert(1, '')
+        #otherwise we hit the weird hyperlink errors
+        if len(messageInfo) > 2:
+            del messageInfo[1:len(messageInfo)-1] #we know that the first and last item will always be wanted
+            messageInfo.insert(1, '')
+        else:
+            messageInfo.insert(1, '')
+
         user, currMessage, monthYear = messageInfo #grab which person sent the message
         
     year = dt.strftime(dt.strptime(monthYear,'%b %d, %Y %H:%M%p'),'%Y')
@@ -30,8 +40,10 @@ for message in allMessages.children:
     else:
         infoDict[str(user)].extend(currMessage) #extend the list of words with those of the current message
     
-    counter += 1
-    if counter == 300:
+
+#plot into a word cloud
+createWordcloud(" ".join(infoDict['Tommy Botch']))
+createWordcloud(" ".join(infoDict['Natalie Blair']))
         
 
 def messageParser(currMessage):
@@ -62,6 +74,9 @@ def removeNonWords(message):
 
     message = emoji_pattern.sub(r'', message)
     
+    message = contractions.fix(message) #expand contractions (doesn't seem to catch i'm)
+    message = message.replace('i\'m', 'I am') #catch the lowercase version of i'm
+    
     puncRemover = str.maketrans('', '', string.punctuation) #punctuation to remove
     numbers = str.maketrans('', '', string.digits) #numbers 0-9
 
@@ -72,17 +87,21 @@ def removeNonWords(message):
     
     message = list(filter(None, message)) #then filter out empty string and turn into list
     
-    message = [word for word in message if word not in stopwords.words('english')]#remove stopwords 
-    
+    message = [word for word in message if word not in stopwords]#remove stopwords 
+
     message = [spellCheck(word) for word in message] #lastly spell check all the words in the message
 
     return message
-
 
 def spellCheck(word):
     repeatedLetters = re.compile(r"(.)\1{2,}") #repeated letters filter
     word = repeatedLetters.sub(r"\1", word) #remove repeated letters
     
     return spell.correction(word)
+
+def createWordcloud(wordlist):
+    cloud = WordCloud(normalize_plurals=True).generate(wordlist)
+    plt.imshow(cloud, interpolation='bilinear')
+    plt.axis('off')
     
     
